@@ -37,11 +37,14 @@ for idx_subject = 1:n_subjects
             
             mu0_2_t1(idx_subject,1)        = est.p_prc.mu_0(2);
             mu0_3_t1(idx_subject,1)        = est.p_prc.mu_0(3);
-            m_3_t1(idx_subject,1)          = est.p_prc.m(3);
             ka_2_t1(idx_subject,1)         = est.p_prc.ka(2);
             om_2_t1(idx_subject,1)         = est.p_prc.om(2);
             ze_t1(idx_subject,1)           = est.p_obs.ze1;
             nu_t1(idx_subject,1)           = est.p_obs.ze2;
+
+            if m ~= 1
+                m_3_t1(idx_subject,1)      = est.p_prc.m(3);
+            end
 
             all_est{idx_subject,1} = est;
             
@@ -52,12 +55,15 @@ for idx_subject = 1:n_subjects
             % Collect params
             mu0_2_t2(idx_subject,1)        = est.p_prc.mu_0(2);
             mu0_3_t2(idx_subject,1)        = est.p_prc.mu_0(3);
-            m_3_t2(idx_subject,1)          = est.p_prc.m(3);
             ka_2_t2(idx_subject,1)         = est.p_prc.ka(2);
             om_2_t2(idx_subject,1)         = est.p_prc.om(2);
             ze_t2(idx_subject,1)           = est.p_obs.ze1;
             nu_t2(idx_subject,1)           = est.p_obs.ze2;
             
+            if m ~= 1
+                m_3_t2(idx_subject,1)      = est.p_prc.m(3);
+            end
+
             all_est{idx_subject,2} = est;
 
         otherwise   
@@ -70,11 +76,14 @@ for idx_subject = 1:n_subjects
             
             mu0_2_t1(idx_subject,1)        = est.p_prc.mu_0(2);
             mu0_3_t1(idx_subject,1)        = est.p_prc.mu_0(3);
-            m_3_t1(idx_subject,1)          = est.p_prc.m(3);
             ka_2_t1(idx_subject,1)         = est.p_prc.ka(2);
             om_2_t1(idx_subject,1)         = est.p_prc.om(2);
             ze_t1(idx_subject,1)           = est.p_obs.ze1;
             nu_t1(idx_subject,1)           = est.p_obs.ze2;
+
+            if m ~= 1
+                m_3_t1(idx_subject,1)      = est.p_prc.m(3);
+            end
 
             all_est{idx_subject,1} = est;
             
@@ -85,11 +94,14 @@ for idx_subject = 1:n_subjects
             % Collect params
             mu0_2_t2(idx_subject,1)        = est.p_prc.mu_0(2);
             mu0_3_t2(idx_subject,1)        = est.p_prc.mu_0(3);
-            m_3_t2(idx_subject,1)          = est.p_prc.m(3);
             ka_2_t2(idx_subject,1)         = est.p_prc.ka(2);
             om_2_t2(idx_subject,1)         = est.p_prc.om(2);
             ze_t2(idx_subject,1)           = est.p_obs.ze1;
             nu_t2(idx_subject,1)           = est.p_obs.ze2;
+
+            if m ~= 1
+                m_3_t2(idx_subject,1)      = est.p_prc.m(3);
+            end
 
             all_est{idx_subject,2} = est;
             
@@ -98,11 +110,32 @@ end
 
 
 %% Write out table and save it
-T = table(ID,eeg_1st,mu0_2_t1,mu0_2_t2,mu0_3_t1,mu0_3_t2,m_3_t1,m_3_t2,...
-    ka_2_t1,ka_2_t2,om_2_t1,om_2_t2,ze_t1,ze_t2,nu_t1,nu_t2);
+if m == 1
 
-ofile = fullfile(options.roots.results_hgf, 'sum_hgf_4_params.xlsx');
+    T = table(ID,eeg_1st,mu0_2_t1,mu0_2_t2,mu0_3_t1,mu0_3_t2,...
+        ka_2_t1,ka_2_t2,om_2_t1,om_2_t2,ze_t1,ze_t2,nu_t1,nu_t2);
+else
+
+    T = table(ID,eeg_1st,mu0_2_t1,mu0_2_t2,mu0_3_t1,mu0_3_t2,m_3_t1,m_3_t2,...
+        ka_2_t1,ka_2_t2,om_2_t1,om_2_t2,ze_t1,ze_t2,nu_t1,nu_t2);
+end
+
+if m == 1
+    ofile = fullfile(options.roots.results_hgf, 'sum_hgf_s_params.xlsx');
+elseif m == 3
+    ofile = fullfile(options.roots.results_hgf, 'sum_hgf_params.xlsx');
+elseif m == 5
+    ofile = fullfile(options.roots.results_hgf, 'sum_hgf_1_params.xlsx');
+elseif m == 6
+    ofile = fullfile(options.roots.results_hgf, 'sum_hgf_2_params.xlsx');
+elseif m == 7
+    ofile = fullfile(options.roots.results_hgf, 'sum_hgf_3_params.xlsx');
+elseif m == 8
+    ofile = fullfile(options.roots.results_hgf, 'sum_hgf_4_params.xlsx');
+end
+
+
 writetable(T, ofile);
 
-ofile = fullfile(options.roots.results_hgf, 'hgf_est.mat');
-save(ofile,'all_est')
+% ofile = fullfile(options.roots.results_hgf, 'hgf_est.mat');
+% save(ofile,'all_est')

@@ -20,7 +20,9 @@ subjects   = options.subjects.all;
 models     = options.hgf.models;
 n_models   = length(options.hgf.models);
 n_subjects = length(subjects);
-group = compi_get_group_labels(options, subjects);
+%group = compi_get_group_labels(options, subjects);
+group = cell(numel(subjects),1);
+[group{:}] = deal('HC');
 covars = compi_get_covariates(options, subjects);
 
 if load_F

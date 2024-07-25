@@ -6,9 +6,9 @@ function compi_master_ioio_test_retest
 %
 % Important: You need to have access to the raw data. The path should be 
 % specified in compi_ioio_options()
-%
-% The data is available at: https://osf.io/a6v8w
+% The data is 
 % -------------------------------------------------------------------------
+
 
 
 %% Set paths and analysis options

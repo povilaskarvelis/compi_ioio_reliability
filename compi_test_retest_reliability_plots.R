@@ -233,7 +233,7 @@ nonhier_analysis(xdata,"lose_switch","Lose-switch T1","Lose-switch T2","black")
 #########################
 
 # load test retest estimates of model parameters
-mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_params.xlsx")
+mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_paramsxlsx")
 #mdata = read_excel("E:/COMPI/results/ioio/test_retest_136/results_hgf/ms1/sum_hgf_params.xlsx")
 
 
@@ -516,7 +516,7 @@ ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 # Standard HGF results #
 ########################
 
-mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_params_sHGF.xlsx")
+mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_s_params.xlsx")
 
 
 pt1 <- plot_ICC_params(mdata$mu0_2_t1,mdata$mu0_2_t2,expression(paste(mu[2]^(0), " T1")),expression(paste(mu[2]^(0), " T2")),'#f59a14')

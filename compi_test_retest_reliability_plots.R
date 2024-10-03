@@ -22,6 +22,8 @@ library(nlme)
 library(readxl)
 library(reshape2)
 library(robustbase)
+library(psych) # For the icc function
+library(dplyr)
 
 
 # clear workspace
@@ -30,27 +32,34 @@ rm(list=ls())
 # load data
 xdata = read.table(file=paste("E:/COMPI/results/ioio/test_retest/results_behav/full_behav_measures.txt", sep=""), header=T, sep=",")
 
+# compute correctness of response based not on outcomes, but overall probability of rewards
+ntrials <- sum(xdata$subID == 1) / 2 # number of trials per subject
+nsubs <- length(unique(xdata$subID))    # number of subjects
+
+# oad task data and extract advice correct probabilities
+task_data <- read.table("C:/Users/karve/Dropbox/Postdoc/Studies/COMPI/code/configs/COMPI.txt")
+advice_correct_prob <- task_data[1:ntrials, 13]
+advice_repeated <- rep(advice_correct_prob, times = 2 * nsubs)
+xdata$combined_corr_prob <- (xdata$cue + advice_repeated) / 2
+xdata$correct_overall <- ifelse(xdata$combined_corr_prob > 0.5, xdata$choice,
+                                ifelse(xdata$combined_corr_prob == 0.5, 1, abs(1 - xdata$choice)))
+
 # deal with invalid trials
-xdata <- xdata[xdata$valid==1, ] 
+xdata <- xdata[xdata$valid==1, ]
 # xdata[xdata$valid!=1, ] <- NA
 xdata$correct[xdata$correct==-1] <- 0
 
 
-# Load necessary libraries
-library(ggplot2)
-library(psych) # For the icc function
-library(dplyr)
-
 # Define a function for plotting scatter plots and ICC results
 plot_ICC <- function(x, y, outliers, labx, laby, titl, colr) {
   xylim <- range(c(x, y))
-  
+
   # Create a data frame for plotting
   data_plot <- data.frame(x = x, y = y, outlier = outliers)
-  
+
   # Create a data frame excluding outliers for geom_smooth
   data_plot_no_outliers <- data_plot[!data_plot$outlier, ]
-  
+
   # Plot
   ggplot(data = data_plot, aes(x = x, y = y, color = outlier)) +
     geom_point(size = 4, alpha = 0.7) +
@@ -72,22 +81,22 @@ plot_ICC <- function(x, y, outliers, labx, laby, titl, colr) {
 
 # Detect univariate outliers using IQR method
 detect_univariate_outliers <- function(x,y) {
-  
+
   m = 3
-    
+
   Q1x <- quantile(x, 0.25, na.rm = TRUE)
   Q3x <- quantile(x, 0.75, na.rm = TRUE)
   IQRx <- Q3x - Q1x
   lbx <- Q1x - m * IQRx
   ubx <- Q3x + m * IQRx
-  
+
   Q1y <- quantile(y, 0.25, na.rm = TRUE)
   Q3y <- quantile(y, 0.75, na.rm = TRUE)
   IQRy <- Q3y - Q1y
   lby <- Q1y - m * IQRy
   uby <- Q3y + m * IQRy
-  
-  
+
+
   return(x < lbx | x > ubx | y < lby | y > uby)
 }
 
@@ -95,23 +104,23 @@ detect_univariate_outliers <- function(x,y) {
 detect_influential_points <- function(x, y) {
   model <- lm(y ~ x)
   cooks_d <- cooks.distance(model)
-  
+
   # Define thresholds
   cooks_d_threshold <- 4 / length(y)
-  
+
   # Identify influential points
   influential_points <- cooks_d > cooks_d_threshold
-  
+
   return(influential_points)
 }
 
-detect_outliers <- function(x, y) { 
-  
+detect_outliers <- function(x, y) {
+
   outliers <- detect_univariate_outliers(x, y)
   #outliers <- detect_influential_points(x, y)
-  
+
   return(outliers)
-  
+
 }
 
 # Define a function for computing ICC non-hierarchically for any variable
@@ -123,18 +132,18 @@ nonhier_analysis <- function(data, column, labx, laby, colr) {
     x[i] = mean(subset(data, session == 1 & subID == i)[[column]] == 1, na.rm = TRUE)
     y[i] = mean(subset(data, session == 2 & subID == i)[[column]] == 1, na.rm = TRUE)
   }
-  
+
   outliers <- detect_outliers(x, y)
-  
+
   # Compute ICC without outliers
   icca1 <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
   r <- cor.test(x[!outliers], y[!outliers])
-  
+
   # Specify title and labels
   titl <- sprintf("ICC = %.2f [%.2f %.2f] \nr     = %.2f [%.2f %.2f]",
                   icca1$value, icca1$lbound, icca1$ubound,
                   r$estimate, r$conf.int[1], r$conf.int[2])
-  
+
   # Plot
   plot_ICC(x, y, outliers, labx, laby, titl, colr)
 }
@@ -145,8 +154,11 @@ nonhier_analysis <- function(data, column, labx, laby, colr) {
 # Total accuracy #
 ##################
 
+# this is not a good way to define accuracy
+# nonhier_analysis(xdata,"correct","Total Acc T1","Total Acc T2","black")
 
-nonhier_analysis(xdata,"correct","Total Acc T1","Total Acc T2","black")
+# accuracy, defined as choosing the option with the higher probability of reward
+nonhier_analysis(xdata,"correct_overall","Total Acc T1","Total Acc T2","black")
 
 
 #######################
@@ -239,18 +251,18 @@ mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_pa
 
 # Define a function for computing ICC with outlier detection and plotting
 plot_ICC_params <- function(x, y, labx, laby, colr) {
-  
+
   outliers <- detect_outliers(x, y)
-  
+
   # Compute ICC without outliers
   ic <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
   r <- cor.test(x[!outliers], y[!outliers])
-  
+
   # Specify title and labels
   titl <- sprintf("ICC = %.2f [%.2f %.2f] \nr     = %.2f [%.2f %.2f]",
                   ic$value, ic$lbound, ic$ubound,
                   r$estimate, r$conf.int[1], r$conf.int[2])
-  
+
   # Plot
   plot_ICC(x, y, outliers, labx, laby, titl, colr)
   return(list(icc = ic, r = r, plot = last_plot()))
@@ -383,7 +395,7 @@ iccs <- data.frame()
 
 for (i in 1:20) {
   datai <- subset(rparamss, seed == i)
-  
+
   # List of parameter pairs to check
   params_pairs <- list(
     c("mu0_2", "mu0_2"),
@@ -394,19 +406,19 @@ for (i in 1:20) {
     c("ze", "ze"),
     c("nu", "nu")
   )
-  
+
   for (j in seq_along(params_pairs)) {
     param_x <- params_pairs[[j]][1]
     param_y <- params_pairs[[j]][2]
-    
+
     x <- datai[[param_x]]
     y <- sparams[[param_y]]
-    
+
     outliers <- detect_outliers(x, y)
-    
+
     # Compute ICC without outliers
     icc_value <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
-    
+
     # Store the ICC value in the data frame
     iccs[i, j] <- icc_value$value
   }
@@ -459,8 +471,8 @@ ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 # # Function to calculate variance components and plot
 # analyze_variance_components <- function(data, variables, variable_order) {
 #   results <- data.frame(Variable=character(), Between_Subjects=numeric(), Within_Subjects=numeric(), Error=numeric(), stringsAsFactors=FALSE)
-#   
-#   
+#
+#
 #   for (var in variables) {
 #     # Reshape data for the current variable
 #     long_data <- data.frame(
@@ -468,15 +480,15 @@ ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #       Session = factor(rep(c("Test", "Retest"), each = nrow(data))),
 #       Value = c(data[[paste0(var, "_t1")]], data[[paste0(var, "_t2")]])
 #     )
-#     
+#
 #     # Fit linear mixed-effects model
 #     model <- lmer(Value ~ (1|Subject) + (1|Session), data = long_data)
 #     var_cor <- as.data.frame(VarCorr(model))
-#     
+#
 #     between_subjects <- var_cor[var_cor$grp == "Subject", "vcov"]
 #     within_subjects <- var_cor[var_cor$grp == "Session", "vcov"]
 #     error <- var_cor[var_cor$grp == "Residual", "vcov"]
-#     
+#
 #     total_variance <- between_subjects + within_subjects + error
 #     results <- rbind(results, data.frame(
 #       Variable = var,
@@ -485,12 +497,12 @@ ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #       Error = error / total_variance * 100
 #     ))
 #   }
-#   
+#
 #   results_melted <- melt(results, id.vars = "Variable", variable.name = "Component", value.name = "Percentage")
 #   results_melted$Variable <- factor(results_melted$Variable, levels = variable_order)
 #   results_melted$Component <- factor(results_melted$Component, levels = c("Error", "Within_Subjects","Between_Subjects"))
-#   
-#   
+#
+#
 #   ggplot(results_melted, aes(x = Variable, y = Percentage, fill = Component)) +
 #     geom_bar(stat = "identity") +
 #     scale_x_discrete(limits = variables, labels = group_names) +
@@ -501,12 +513,12 @@ ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #     theme(plot.title = element_text(size = 16)) +
 #     theme(axis.text.x = element_text(size = 16))
 # }
-# 
-# 
-# 
+#
+#
+#
 # param_names <- c("mu0_2", "mu0_3", "m_3", "ka_2", "om_2", "ze", "nu")
-# 
-# 
+#
+#
 # # Run the analysis and plot the results
 # analyze_variance_components(mdata, param_names,param_names)
 
@@ -605,50 +617,50 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 
 
 # ####### Additional reduced models: ICC results #######
-# 
+#
 # # hgfmr 1
-# 
-# 
+#
+#
 # mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_1_params.xlsx")
-# 
-# 
+#
+#
 # pt2 <- plot_ICC_params(mdata$mu0_3_t1,mdata$mu0_3_t2,expression(paste(mu[3]^(0), " T1")),expression(paste(mu[3]^(0), " T2")),'#f59a14')
 # print(pt2$plot)
-# 
+#
 # pt3 <- plot_ICC_params(mdata$m_3_t1,mdata$m_3_t2,expression(paste('m'[3], " T1")),expression(paste('m'[3], " T2")),'#f59a14')
 # print(pt3$plot)
-# 
+#
 # pt4 <- plot_ICC_params(mdata$ka_2_t1,mdata$ka_2_t2,expression(paste(kappa[2], " T1")),expression(paste(kappa[2], " T2")),'#f59a14')
 # print(pt4$plot)
-# 
+#
 # pt5 <- plot_ICC_params(mdata$om_2_t1,mdata$om_2_t2,expression(paste(omega[2], " T1")),expression(paste(omega[2], " T2")),'#f59a14')
 # print(pt5$plot)
-# 
+#
 # pt6 <- plot_ICC_params(mdata$ze_t1,mdata$ze_t2,expression(paste(zeta, " T1")),expression(paste(zeta, " T2")),'#f59a14')
 # print(pt6$plot)
-# 
+#
 # pt7 <- plot_ICC_params(mdata$nu_t1,mdata$nu_t2,expression(paste(nu, " T1")),expression(paste(nu, " T2")),'#f59a14')
 # print(pt7$plot)
-# 
-# 
+#
+#
 # # store to be plotted later in a bar plot
 # retest <- c(pt2$icc$value,pt3$icc$value,pt4$icc$value,pt5$icc$value,pt6$icc$value,pt7$icc$value)
 # retelb <- c(pt2$icc$lbound,pt3$icc$lbound,pt4$icc$lbound,pt5$icc$lbound,pt6$icc$lbound,pt7$icc$lbound)
 # reteub <- c(pt2$icc$ubound,pt3$icc$ubound,pt4$icc$ubound,pt5$icc$ubound,pt6$icc$ubound,pt7$icc$ubound)
-# 
+#
 # # Compute standard error from confidence intervals
 # ret_se = (reteub - retelb)/3.92
-# 
-# 
+#
+#
 # rparamss <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/rec_params_20seeds_hgfmr_1.csv")
 # sparams  <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/sim_params_hgfmr_1.csv")
-# 
+#
 # # Initialize a data frame to store ICC values
 # iccs <- data.frame()
-# 
+#
 # for (i in 1:20) {
 #   datai <- subset(rparamss, seed == i)
-#   
+#
 #   # List of parameter pairs to check
 #   params_pairs <- list(
 #     c("mu0_3", "mu0_3"),
@@ -658,40 +670,40 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #     c("ze", "ze"),
 #     c("nu", "nu")
 #   )
-#   
+#
 #   for (j in seq_along(params_pairs)) {
 #     param_x <- params_pairs[[j]][1]
 #     param_y <- params_pairs[[j]][2]
-#     
+#
 #     x <- datai[[param_x]]
 #     y <- sparams[[param_y]]
-#     
+#
 #     outliers <- detect_outliers(x, y)
-#     
+#
 #     # Compute ICC without outliers
 #     icc_value <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
-#     
+#
 #     # Store the ICC value in the data frame
 #     iccs[i, j] <- icc_value$value
 #   }
 # }
-# 
+#
 # recov_mean = colMeans(iccs)
 # recov_se <- std.error(iccs)
-# 
-# 
+#
+#
 # # combine for the plot
 # lower_se = c(retest-ret_se,recov_mean-recov_se)
 # upper_se = c(retest+ret_se,recov_mean+recov_se)
-# 
+#
 # # set negative ICC values to 0 - as per interpretation
 # lower_se[lower_se < 0] <- 0
-# 
-# 
+#
+#
 # # Define the desired order of the groups
 # group_order <- c("mu0_3", "m3", "ka2", "om2", "ze", "nu")
 # group_names <- expression(mu[3]^(0),m[3],kappa[2],omega[2],zeta,nu)
-# 
+#
 # rez <- data.frame(
 #   category = rep(c("Test-retest reliability", "Parameter recovery"), each = 6),
 #   group = rep(c("mu0_3", "m3", "ka2", "om2", "ze", "nu"), times = 2),
@@ -699,7 +711,7 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   lower = lower_se,
 #   upper = upper_se
 # )
-# 
+#
 # # Create stacked bar plot
 # ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #   #geom_col(position = "stack") +
@@ -713,50 +725,50 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   labs(title = "Parameter recovery vs. \ntest-retest reliability", x = "Parameters", y = "ICC") +
 #   theme(plot.title = element_text(size = 16)) +
 #   theme(axis.text.x = element_text(size = 16))
-# 
-# 
+#
+#
 # # hgfmr 2
-# 
-# 
+#
+#
 # mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_2_params.xlsx")
-# 
+#
 # pt1 <- plot_ICC_params(mdata$mu0_2_t1,mdata$mu0_2_t2,expression(paste(mu[2]^(0), " T1")),expression(paste(mu[2]^(0), " T2")),'#f59a14')
 # print(pt1$plot)
-# 
+#
 # pt2 <- plot_ICC_params(mdata$mu0_3_t1,mdata$mu0_3_t2,expression(paste(mu[3]^(0), " T1")),expression(paste(mu[3]^(0), " T2")),'#f59a14')
 # print(pt2$plot)
-# 
+#
 # pt3 <- plot_ICC_params(mdata$m_3_t1,mdata$m_3_t2,expression(paste('m'[3], " T1")),expression(paste('m'[3], " T2")),'#f59a14')
 # print(pt3$plot)
-# 
+#
 # pt5 <- plot_ICC_params(mdata$om_2_t1,mdata$om_2_t2,expression(paste(omega[2], " T1")),expression(paste(omega[2], " T2")),'#f59a14')
 # print(pt5$plot)
-# 
+#
 # pt6 <- plot_ICC_params(mdata$ze_t1,mdata$ze_t2,expression(paste(zeta, " T1")),expression(paste(zeta, " T2")),'#f59a14')
 # print(pt6$plot)
-# 
+#
 # pt7 <- plot_ICC_params(mdata$nu_t1,mdata$nu_t2,expression(paste(nu, " T1")),expression(paste(nu, " T2")),'#f59a14')
 # print(pt7$plot)
-# 
-# 
+#
+#
 # # store to be plotted later in a bar plot
 # retest <- c(pt1$icc$value,pt2$icc$value,pt3$icc$value,pt5$icc$value,pt6$icc$value,pt7$icc$value)
 # retelb <- c(pt1$icc$lbound,pt2$icc$lbound,pt3$icc$lbound,pt5$icc$lbound,pt6$icc$lbound,pt7$icc$lbound)
 # reteub <- c(pt1$icc$ubound,pt2$icc$ubound,pt3$icc$ubound,pt5$icc$ubound,pt6$icc$ubound,pt7$icc$ubound)
-# 
+#
 # # Compute standard error from confidence intervals
 # ret_se = (reteub - retelb)/3.92
-# 
-# 
+#
+#
 # rparamss <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/rec_params_20seeds_hgfmr_2.csv")
 # sparams  <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/sim_params_hgfmr_2.csv")
-# 
+#
 # # Initialize a data frame to store ICC values
 # iccs <- data.frame()
-# 
+#
 # for (i in 1:20) {
 #   datai <- subset(rparamss, seed == i)
-#   
+#
 #   # List of parameter pairs to check
 #   params_pairs <- list(
 #     c("mu0_2", "mu0_2"),
@@ -766,40 +778,40 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #     c("ze", "ze"),
 #     c("nu", "nu")
 #   )
-#   
+#
 #   for (j in seq_along(params_pairs)) {
 #     param_x <- params_pairs[[j]][1]
 #     param_y <- params_pairs[[j]][2]
-#     
+#
 #     x <- datai[[param_x]]
 #     y <- sparams[[param_y]]
-#     
+#
 #     outliers <- detect_outliers(x, y)
-#     
+#
 #     # Compute ICC without outliers
 #     icc_value <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
-#     
+#
 #     # Store the ICC value in the data frame
 #     iccs[i, j] <- icc_value$value
 #   }
 # }
-# 
+#
 # recov_mean = colMeans(iccs)
 # recov_se <- std.error(iccs)
-# 
-# 
+#
+#
 # # combine for the plot
 # lower_se = c(retest-ret_se,recov_mean-recov_se)
 # upper_se = c(retest+ret_se,recov_mean+recov_se)
-# 
+#
 # # set negative ICC values to 0 - as per interpretation
 # lower_se[lower_se < 0] <- 0
-# 
-# 
+#
+#
 # # Define the desired order of the groups
 # group_order <- c("mu0_2", "mu0_3","m3", "om2", "ze", "nu")
 # group_names <- expression(mu[2]^(0),mu[3]^(0),m[3],omega[2],zeta,nu)
-# 
+#
 # rez <- data.frame(
 #   category = rep(c("Test-retest reliability", "Parameter recovery"), each = 6),
 #   group = rep(c("mu0_2", "mu0_3","m3", "om2", "ze", "nu"), times = 2),
@@ -807,7 +819,7 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   lower = lower_se,
 #   upper = upper_se
 # )
-# 
+#
 # # Create stacked bar plot
 # ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #   #geom_col(position = "stack") +
@@ -821,46 +833,46 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   labs(title = "Parameter recovery vs. \ntest-retest reliability", x = "Parameters", y = "ICC") +
 #   theme(plot.title = element_text(size = 16)) +
 #   theme(axis.text.x = element_text(size = 16))
-# 
-# 
+#
+#
 # # hgfmr 3
-# 
+#
 # mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_3_params.xlsx")
-# 
+#
 # pt2 <- plot_ICC_params(mdata$mu0_3_t1,mdata$mu0_3_t2,expression(paste(mu[3]^(0), " T1")),expression(paste(mu[3]^(0), " T2")),'#f59a14')
 # print(pt2$plot)
-# 
+#
 # pt3 <- plot_ICC_params(mdata$m_3_t1,mdata$m_3_t2,expression(paste('m'[3], " T1")),expression(paste('m'[3], " T2")),'#f59a14')
 # print(pt3$plot)
-# 
+#
 # pt5 <- plot_ICC_params(mdata$om_2_t1,mdata$om_2_t2,expression(paste(omega[2], " T1")),expression(paste(omega[2], " T2")),'#f59a14')
 # print(pt5$plot)
-# 
+#
 # pt6 <- plot_ICC_params(mdata$ze_t1,mdata$ze_t2,expression(paste(zeta, " T1")),expression(paste(zeta, " T2")),'#f59a14')
 # print(pt6$plot)
-# 
+#
 # pt7 <- plot_ICC_params(mdata$nu_t1,mdata$nu_t2,expression(paste(nu, " T1")),expression(paste(nu, " T2")),'#f59a14')
 # print(pt7$plot)
-# 
-# 
+#
+#
 # # store to be plotted later in a bar plot
 # retest <- c(pt2$icc$value,pt3$icc$value,pt5$icc$value,pt6$icc$value,pt7$icc$value)
 # retelb <- c(pt2$icc$lbound,pt3$icc$lbound,pt5$icc$lbound,pt6$icc$lbound,pt7$icc$lbound)
 # reteub <- c(pt2$icc$ubound,pt3$icc$ubound,pt5$icc$ubound,pt6$icc$ubound,pt7$icc$ubound)
-# 
+#
 # # Compute standard error from confidence intervals
 # ret_se = (reteub - retelb)/3.92
-# 
-# 
+#
+#
 # rparamss <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/rec_params_20seeds_hgfmr_3.csv")
 # sparams  <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/sim_params_hgfmr_3.csv")
-# 
+#
 # # Initialize a data frame to store ICC values
 # iccs <- data.frame()
-# 
+#
 # for (i in 1:20) {
 #   datai <- subset(rparamss, seed == i)
-#   
+#
 #   # List of parameter pairs to check
 #   params_pairs <- list(
 #     c("mu0_3", "mu0_3"),
@@ -869,40 +881,40 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #     c("ze", "ze"),
 #     c("nu", "nu")
 #   )
-#   
+#
 #   for (j in seq_along(params_pairs)) {
 #     param_x <- params_pairs[[j]][1]
 #     param_y <- params_pairs[[j]][2]
-#     
+#
 #     x <- datai[[param_x]]
 #     y <- sparams[[param_y]]
-#     
+#
 #     outliers <- detect_outliers(x, y)
-#     
+#
 #     # Compute ICC without outliers
 #     icc_value <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
-#     
+#
 #     # Store the ICC value in the data frame
 #     iccs[i, j] <- icc_value$value
 #   }
 # }
-# 
+#
 # recov_mean = colMeans(iccs)
 # recov_se <- std.error(iccs)
-# 
-# 
+#
+#
 # # combine for the plot
 # lower_se = c(retest-ret_se,recov_mean-recov_se)
 # upper_se = c(retest+ret_se,recov_mean+recov_se)
-# 
+#
 # # set negative ICC values to 0 - as per interpretation
 # lower_se[lower_se < 0] <- 0
-# 
-# 
+#
+#
 # # Define the desired order of the groups
 # group_order <- c("mu0_3","m3", "om2", "ze", "nu")
 # group_names <- expression(mu[3]^(0),m[3],omega[2],zeta,nu)
-# 
+#
 # rez <- data.frame(
 #   category = rep(c("Test-retest reliability", "Parameter recovery"), each = 5),
 #   group = rep(c("mu0_3","m3", "om2", "ze", "nu"), times = 2),
@@ -910,7 +922,7 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   lower = lower_se,
 #   upper = upper_se
 # )
-# 
+#
 # # Create stacked bar plot
 # ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #   #geom_col(position = "stack") +
@@ -924,43 +936,43 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   labs(title = "Parameter recovery vs. \ntest-retest reliability", x = "Parameters", y = "ICC") +
 #   theme(plot.title = element_text(size = 16)) +
 #   theme(axis.text.x = element_text(size = 16))
-# 
-# 
+#
+#
 # # hgfmr 4
-# 
+#
 # mdata = read_excel("E:/COMPI/results/ioio/test_retest/results_hgf/ms1/sum_hgf_4_params.xlsx")
-# 
+#
 # pt3 <- plot_ICC_params(mdata$m_3_t1,mdata$m_3_t2,expression(paste('m'[3], " T1")),expression(paste('m'[3], " T2")),'#f59a14')
 # print(pt3$plot)
-# 
+#
 # pt5 <- plot_ICC_params(mdata$om_2_t1,mdata$om_2_t2,expression(paste(omega[2], " T1")),expression(paste(omega[2], " T2")),'#f59a14')
 # print(pt5$plot)
-# 
+#
 # pt6 <- plot_ICC_params(mdata$ze_t1,mdata$ze_t2,expression(paste(zeta, " T1")),expression(paste(zeta, " T2")),'#f59a14')
 # print(pt6$plot)
-# 
+#
 # pt7 <- plot_ICC_params(mdata$nu_t1,mdata$nu_t2,expression(paste(nu, " T1")),expression(paste(nu, " T2")),'#f59a14')
 # print(pt7$plot)
-# 
-# 
+#
+#
 # # store to be plotted later in a bar plot
 # retest <- c(pt3$icc$value,pt5$icc$value,pt6$icc$value,pt7$icc$value)
 # retelb <- c(pt3$icc$lbound,pt5$icc$lbound,pt6$icc$lbound,pt7$icc$lbound)
 # reteub <- c(pt3$icc$ubound,pt5$icc$ubound,pt6$icc$ubound,pt7$icc$ubound)
-# 
+#
 # # Compute standard error from confidence intervals
 # ret_se = (reteub - retelb)/3.92
-# 
-# 
+#
+#
 # rparamss <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/rec_params_20seeds_hgfmr_4.csv")
 # sparams  <- read.csv("E:/COMPI/results/ioio/hgf_comp/results_hgf/sim_params_hgfmr_4.csv")
-# 
+#
 # # Initialize a data frame to store ICC values
 # iccs <- data.frame()
-# 
+#
 # for (i in 1:20) {
 #   datai <- subset(rparamss, seed == i)
-#   
+#
 #   # List of parameter pairs to check
 #   params_pairs <- list(
 #     c("m_3", "m_3"),
@@ -968,40 +980,40 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #     c("ze", "ze"),
 #     c("nu", "nu")
 #   )
-#   
+#
 #   for (j in seq_along(params_pairs)) {
 #     param_x <- params_pairs[[j]][1]
 #     param_y <- params_pairs[[j]][2]
-#     
+#
 #     x <- datai[[param_x]]
 #     y <- sparams[[param_y]]
-#     
+#
 #     outliers <- detect_outliers(x, y)
-#     
+#
 #     # Compute ICC without outliers
 #     icc_value <- icc(cbind(x[!outliers], y[!outliers]), model = "twoway", type = "agreement", unit = "single")
-#     
+#
 #     # Store the ICC value in the data frame
 #     iccs[i, j] <- icc_value$value
 #   }
 # }
-# 
+#
 # recov_mean = colMeans(iccs)
 # recov_se <- std.error(iccs)
-# 
-# 
+#
+#
 # # combine for the plot
 # lower_se = c(retest-ret_se,recov_mean-recov_se)
 # upper_se = c(retest+ret_se,recov_mean+recov_se)
-# 
+#
 # # set negative ICC values to 0 - as per interpretation
 # lower_se[lower_se < 0] <- 0
-# 
-# 
+#
+#
 # # Define the desired order of the groups
 # group_order <- c("m3", "om2", "ze", "nu")
 # group_names <- expression(m[3],omega[2],zeta,nu)
-# 
+#
 # rez <- data.frame(
 #   category = rep(c("Test-retest reliability", "Parameter recovery"), each = 4),
 #   group = rep(c("m3", "om2", "ze", "nu"), times = 2),
@@ -1009,7 +1021,7 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   lower = lower_se,
 #   upper = upper_se
 # )
-# 
+#
 # # Create stacked bar plot
 # ggplot(rez, aes(x = group, y = ICC, fill = category)) +
 #   #geom_col(position = "stack") +
@@ -1023,22 +1035,22 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   labs(title = "Parameter recovery vs. \ntest-retest reliability", x = "Parameters", y = "ICC") +
 #   theme(plot.title = element_text(size = 16)) +
 #   theme(axis.text.x = element_text(size = 16))
-# 
-# 
-# 
-# ## Obsolete: hierarchical analysis for behavioral measures 
+#
+#
+#
+# ## Obsolete: hierarchical analysis for behavioral measures
 # ## (something is off with two measures - feel free to fix it)
-# 
+#
 # # Define a function for plotting all ICC results together
 # plot_ICC_all <- function(data,labx,laby,titl,icc_m){
-# 
+#
 #   # first. compute ICC for all estimates
 #   ic1 = icc(cbind(data[ ,1],data[ ,2]),model = "twoway",type="agreement",unit="single")
 #   ic2 = icc(cbind(data[ ,5],data[ ,6]),model = "twoway",type="agreement",unit="single")
 #   ic3 = icc(cbind(data[ ,9],data[ ,10]),model = "twoway",type="agreement",unit="single")
-# 
+#
 #   xylim <- range(data[,c(1,2,5,6,9,10)])
-# 
+#
 #   ggplot(data = data) +
 #     geom_abline(intercept = 0, slope = 1,  linetype = "dashed", size = 1) +
 #     scale_x_continuous(limits = xylim) +
@@ -1049,7 +1061,7 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #     geom_smooth(aes(data[ ,5],data[ ,6]),color='skyblue2',method=lm,se=F,size=1.2)+
 #     geom_point(aes(data[ ,9],data[ ,10], color="palevioletred"),  size = 3) +
 #     geom_smooth(aes(data[ ,9],data[ ,10]),color='palevioletred',method=lm,se=F,size=1.2) +
-# 
+#
 #     labs(title = titl, x=labx, y=laby) +
 #     theme(text=element_text(family="Futura Bk BT"),plot.title = element_text(hjust = 0.5,face = "bold"),
 #           panel.background = element_blank(), axis.line = element_line(colour = "black", size=0.2),
@@ -1070,7 +1082,7 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 
 # # Define a function for computing ICC non-hierarchically for any variable
 # hier_analysis <- function(data,column,labx,laby,titl){
-# 
+#
 #   # non-hierarchical estimation (for comparison purposes)
 #   x1 <- vector(); sx1 <- vector();
 #   x2 <- vector(); sx2 <- vector();
@@ -1081,28 +1093,28 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #     sx1[i] = std.error(subset(data, session==1 & subID==ids[i])[[column]] == 1,na.rm=T)
 #     sx2[i] = std.error(subset(data, session==2 & subID==ids[i])[[column]] == 1,na.rm=T)
 #   };
-# 
+#
 #   # Hierarchical estimation with the sessions treated separately
 #   fh = as.formula(paste(column, "~ 1 + (1|subID)"))
-# 
+#
 #   # session 1
 #   hf1  = glmer(fh, data=subset(data, session == 1), family=binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=1e5)), na.action = na.exclude)
 #   #temp <- ggpredict(hf1, terms=c("subID[all]"), type="re")
 #   #xh1  = temp$predicted
 #   xh1  = predict(hf1, newdata = filter(data, session == 1) %>% distinct(subID), type = "response")
 #   sxh1 = as.vector(unlist(se.ranef(hf1)))
-# 
+#
 #   # session 2
 #   hf2  = glmer(fh, data=subset(data, session == 2), family=binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=1e5)), na.action = na.exclude)
 #   #temp <- ggpredict(hf2, terms=c("subID[all]"), type="re")
 #   #xh2  = temp$predicted
 #   xh2  = predict(hf2, newdata = filter(data, session == 2) %>% distinct(subID), type = "response")
 #   sxh2  = as.vector(unlist(se.ranef(hf2)))
-# 
+#
 #   # Same, but the sessions are treated jointly (interaction between session and subID)
 #   fH = as.formula(paste(column, "~ session + (1|subID/session)"))
 #   HF = glmer(fH, data=data, family=binomial,control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=1e5)), na.action = na.exclude)
-# 
+#
 #   # predicted values & standard errors
 #   temp <- predict(HF, newdata = data %>% distinct(subID, session), type = "response")
 #   #temp <- ggpredict(HF, terms=c("subID [all]", "session [all]"), type="re")
@@ -1112,24 +1124,21 @@ icca1 <- icc(cbind(x1,x2), model="twoway", type="agreement",unit="single")
 #   xH2 = temp[c(FALSE,TRUE)]
 #   sxH1 = as.vector(unlist(se.ranef(HF)[2]))
 #   sxH2 = as.vector(unlist(se.ranef(HF)[2]))
-# 
+#
 #   var_int <- get_variance_intercept(HF)
 #   icc_m = round(var_int[2]/(var_int[2] + var_int[1]),digits = 2)
-# 
+#
 #   cdata = data.frame(x1,x2,sx1,sx2,xh1,xh2,sxh1,sxh2,xH1,xH2,sxH1,sxH2)
 #   plot_ICC_all(cdata,labx,laby,titl,icc_m)
-# 
+#
 # }
-# 
+#
 # hier_analysis(xdata,"correct","Total Acc T1","Total Acc T2","Total Acc")
 # hier_analysis(xdata,"choice","Total AT T1","Total AT T2","Total AT")
 # hier_analysis(xdata,"choice_stable","Stable AT T1","Stable AT T2","Stable AT")
 # hier_analysis(xdata,"choice_volatile","Volatile AT T1","Volatile AT T2","Volatile AT")
 # hier_analysis(xdata,"win_stay","Win-stay AT T1","Win-stay AT T2","Win-stay AT")
 # hier_analysis(xdata,"lose_switch","Lose-switch AT T1","Lose-switch AT T2","Lose-switch AT")
-# 
+#
 # # note, need to make the function non-binomial for this to run
 # #hier_analysis(x1data,"RT","RT T1","RT T2","RT")
-
-
-
